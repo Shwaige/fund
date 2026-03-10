@@ -1,3 +1,11 @@
+# 资产管家 (Fund Manager)
+
+基于 Streamlit 的个人基金净值与盈亏实时监控系统。
+
+### 🚀 核心逻辑
+- **双路校验**：优先使用历史净值接口（T日与T-1日对照），数据未出时回退至实时估值接口。
+- **数据一致性**：强制采用同源数据计算，确保盈亏精度。
+
 # 1. 解锁脚本执行权限（如果报错需执行，不报错可跳过）
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 
