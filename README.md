@@ -15,7 +15,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 # 3. 启动资产管家程序
 streamlit run fund_app.py
 
-
+格式如下：
 国泰黄金ETF联接C,004253,3486.39
 天弘中证电网设备主题指数C,025833,872.29
 国泰国证有色金属行业指数C,015596,456.78
