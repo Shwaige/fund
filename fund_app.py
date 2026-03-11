@@ -144,7 +144,7 @@ if not df.empty:
         return f'color: {color}; font-weight: bold'
 
 
-    styled_df = display_df.style.applymap(style_profit, subset=['今日涨幅(%)', '当日盈亏']) \
+    styled_df = display_df.style.map(style_profit, subset=['今日涨幅(%)', '当日盈亏']) \
         .format({'持有份额': '{:,.2f}', '昨日市值': '¥{:,.2f}', '今日市值': '¥{:,.2f}',
                  '今日涨幅(%)': '{:+.2f}%', '当日盈亏': '¥{:,.2f}'})
 
