@@ -11,6 +11,7 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process
 
 # 2. 激活虚拟环境 (注意前面的点)
 .\.venv\Scripts\Activate.ps1
+source .venv/bin/activate
 
 # 3. 启动资产管家程序
 streamlit run fund_app.py
