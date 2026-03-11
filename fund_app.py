@@ -6,6 +6,7 @@ import json
 import re
 import streamlit.components.v1 as components
 from datetime import datetime, timedelta
+import time
 
 
 # 1. 兼容性刷新函数
@@ -24,7 +25,6 @@ def init_db():
     c.execute('CREATE TABLE IF NOT EXISTS holdings (username TEXT, name TEXT, code TEXT, shares REAL)')
     c.execute(
         'CREATE TABLE IF NOT EXISTS daily_history (username TEXT, record_date TEXT, total_value REAL, base_value REAL)')
-
     c.execute("SELECT count(*) FROM users")
     if c.fetchone()[0] == 0:
         c.execute("INSERT INTO users VALUES (?,?)", ("admin", "123456"))
@@ -99,32 +99,61 @@ if not df.empty:
     total_cur, total_yest, temp_results = 0.0, 0.0, []
     now = datetime.now()
     today_s = now.strftime("%Y-%m-%d")
-    yest_s = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    current_ts = int(time.time() * 1000)
 
-    with st.spinner('正在同步行情...'):
+    with st.spinner('正在同步行情与市值...'):
         for _, row in df.iterrows():
             try:
                 shares = float(row['shares'])
                 f_code = row['code']
+                curr_v, prev_v, zzl, tag = None, None, 0.0, "估值"
 
-                # 获取实时/历史数据逻辑
+                # 1. 先拿实时接口的数据 (作为保底和获取昨日净值基准)
                 rt_res = requests.get(f"https://jeokegeywtms.sealosbja.site/api/fund-realtime/{f_code}.js", timeout=5)
-                rt_data = json.loads(re.search(r'jsonpgz\((.*)\)', rt_res.text).group(1))
-                curr_v = float(rt_data['gsz'])
-                prev_v = float(rt_data['dwjz'])
-                zzl = rt_data['gszzl']
+                rt_match = re.search(r'jsonpgz\((.*)\)', rt_res.text)
+                if rt_match:
+                    rt_data = json.loads(rt_match.group(1))
+                    # 关键：昨日净值直接用实时接口里的 dwjz，这是最准确的昨日定盘价
+                    prev_v = float(rt_data['dwjz'])
+                    # 先预设今日净值为估值
+                    curr_v = float(rt_data['gsz'])
+                    zzl = float(rt_data['gszzl'])
 
-                cv, yv = shares * curr_v, shares * prev_v
-                single_profit = cv - yv
-                total_cur += cv
-                total_yest += yv
-                temp_results.append({
-                    '基金名称': row['name'], '代码': f_code, '持有份额': shares,
-                    '昨日市值': yv, '今日市值': cv, '当日盈亏': single_profit, '今日涨幅(%)': float(zzl)
-                })
+                # 2. 尝试用历史接口校准今日数据 (如果今日已更新，则覆盖估值)
+                try:
+                    # 严格使用你提供的历史接口格式
+                    hist_url = f"https://jeokegeywtms.sealosbja.site/api/fund-nav-history?fundCode={f_code}&pageIndex=1&pageSize=1&startDate={today_s}&endDate={today_s}"
+                    h_res = requests.get(hist_url, timeout=3).json()
+                    if h_res.get("Data") and h_res["Data"].get("LSJZList"):
+                        item = h_res["Data"]["LSJZList"][0]
+                        if item.get("FSRQ") == today_s:
+                            curr_v = float(item["DWJZ"])  # 用官方确认为准
+                            zzl = float(item.get("JZZZL", zzl))
+                            tag = "今日已更新"
+                except:
+                    pass  # 历史接口若报错或无数据，维持“估值”状态
+
+                # 3. 纯金额对撞计算
+                if curr_v is not None and prev_v is not None:
+                    cv = shares * curr_v  # 今日市值
+                    yv = shares * prev_v  # 昨日市值 (昨日持有规模)
+                    single_profit = cv - yv  # 盈亏金额
+
+                    total_cur += cv
+                    total_yest += yv
+
+                    temp_results.append({
+                        '基金名称': row['name'],
+                        '代码': f_code,
+                        '持有份额': shares,
+                        '今日市值': cv,
+                        '昨日市值': yv,
+                        '当日盈亏': single_profit,
+                        '今日涨幅(%)': zzl,
+                        '状态': tag
+                    })
             except:
                 continue
-
     # 1. 顶部指标
     profit_sum = total_cur - total_yest
     pct = round((profit_sum / total_yest * 100), 2) if total_yest != 0 else 0.0
@@ -134,25 +163,30 @@ if not df.empty:
     c3.metric("今日盈亏", f"¥{profit_sum:,.2f}", f"{'+' if pct > 0 else ''}{pct}%")
     c4.metric("同步时间", now.strftime("%H:%M:%S"))
 
-    # 2. 资产明细表格 (排序与拉伸优化)
-    st.markdown("### 📋 资产明细 (点击表头可排序)")
-    display_df = pd.DataFrame(temp_results).sort_values(by="当日盈亏", ascending=False)
+    # 2. 资产明细表格 (排序与渲染)
+    st.markdown("### 📋 资产明细 (已按盈亏排序)")
+    display_df = pd.DataFrame(temp_results)
+
+    if not display_df.empty:
+        # 排序：由于 temp_results 里已经有了“当日盈亏”这个 Key，这里不会报错
+        display_df = display_df.sort_values(by="当日盈亏", ascending=False)
 
 
-    def style_profit(val):
-        color = '#ff4b4b' if val > 0 else '#00873c' if val < 0 else '#666'
-        return f'color: {color}; font-weight: bold'
+        def style_profit(val):
+            color = '#ff4b4b' if val > 0 else '#00873c' if val < 0 else '#666'
+            return f'color: {color}; font-weight: bold'
 
 
-    styled_df = display_df.style.map(style_profit, subset=['今日涨幅(%)', '当日盈亏']) \
-        .format({'持有份额': '{:,.2f}', '昨日市值': '¥{:,.2f}', '今日市值': '¥{:,.2f}',
-                 '今日涨幅(%)': '{:+.2f}%', '当日盈亏': '¥{:,.2f}'})
+        styled_df = display_df.style.map(style_profit, subset=['今日涨幅(%)', '当日盈亏']) \
+            .format({
+            '持有份额': '{:,.2f}',
+            '昨日市值': '¥{:,.2f}',
+            '今日市值': '¥{:,.2f}',
+            '今日涨幅(%)': '{:+.2f}%',
+            '当日盈亏': '¥{:,.2f}'
+        })
 
-    # 兼容性布局处理
-    try:
         st.dataframe(styled_df, use_container_width=True, hide_index=True)
-    except:
-        st.dataframe(styled_df, width=1200)  # 针对旧版 Mac 环境的降级处理
 
     # 3. 历史记录自动保存
     db_cur = conn.cursor()
