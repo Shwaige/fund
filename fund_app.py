@@ -186,7 +186,7 @@ if not df.empty:
             '当日盈亏': '¥{:,.2f}'
         })
 
-        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        st.dataframe(styled_df)
 
     # 3. 历史记录自动保存
     db_cur = conn.cursor()
