@@ -2,9 +2,19 @@
 .venv/
 venv/
 __pycache__/
+*.py[cod]
+*.pyo
 
 # 忽略本地数据库文件（保护你的资产隐私）
 *.db
+*.sqlite
+*.sqlite3
+
+# 忽略 Streamlit 本地状态
+.streamlit/
+
+# 忽略系统文件
+.DS_Store
 
 # 忽略编辑器配置
 .vscode/
